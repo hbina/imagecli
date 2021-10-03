@@ -39,6 +39,29 @@ pub trait ImageOp: std::fmt::Debug {
     fn signature(&self) -> Option<(usize, usize)>;
 }
 
+/// An image processing operation that operates on a single image
+pub trait SingleImageOp: std::fmt::Debug + ImageOp {
+    /// Apply this operation to the top of the stack.
+    fn single_apply(&self, image: DynamicImage, pipeline: &str) -> Result<()> {
+        let mut stack = ImageStack::new(vec![image]);
+        let ops = parse(pipeline)?;
+        let all_single_image_ops = ops.iter().all(|s| {
+            s.signature()
+                .map(|(l, r)| l == 1 && r == 1)
+                .unwrap_or(false)
+        });
+        if !all_single_image_ops {
+            // TODO: Return an appropriate error instead?
+            // TODO: Make this impossible to happen?
+            panic!("When using bulk mode, only image operations that require 1 input image is allowed.");
+        }
+        for op in ops {
+            op.apply(&mut stack);
+        }
+        Ok(())
+    }
+}
+
 /// Parse a pipeline, returning a moderately useful error if parsing fails.
 pub fn parse(pipeline: &str) -> Result<Vec<Box<dyn ImageOp>>> {
     if pipeline.trim().is_empty() {

@@ -22,6 +22,10 @@ struct Opt {
     /// Ignore all the other flags and regenerate a user guide instead.
     #[structopt(long)]
     generate_guide: bool,
+
+    /// Performs transformation on all images in a folder and output them in another folder.
+    #[structopt(long)]
+    bulk_mode: bool,
 }
 
 fn main() {
@@ -29,6 +33,8 @@ fn main() {
 
     let result = if opt.generate_guide {
         generate_guide(opt.verbose)
+    } else if opt.bulk_mode {
+        Ok(())
     } else {
         process(&opt.input, &opt.output, opt.pipeline, opt.verbose)
     };

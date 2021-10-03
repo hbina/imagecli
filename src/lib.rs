@@ -14,10 +14,11 @@
 )]
 
 use image::{open, DynamicImage, GenericImageView};
+use rayon::prelude::*;
 use snafu::ResultExt;
 use std::{
     io::{Error, ErrorKind},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub mod documentation;
@@ -29,7 +30,7 @@ mod example;
 mod expr;
 use glob::glob;
 pub mod image_ops;
-use image_ops::parse;
+use image_ops::{parse, ImageOp, SingleImageOp};
 mod output_spec;
 use output_spec::OutputSpec;
 mod parse_utils;
@@ -43,6 +44,29 @@ extern crate test;
 /// from it, computing zero or more results and pushing those
 /// back onto the stack.
 pub type ImageStack = stack::Stack<DynamicImage>;
+
+/// Load inputs, run the pipeline, and save the results.
+pub fn process_bulk(
+    input_patterns: &[String],
+    output_patterns: &[String],
+    pipeline: Option<String>,
+    verbose: bool,
+) -> Result<()> {
+    let inputs = bulk_load_inputs(input_patterns, verbose)?;
+    let output_spec = OutputSpec::parse(output_patterns)?;
+
+    let pipeline = match pipeline {
+        Some(p) => p.clone(),
+        None => "".into(),
+    };
+
+    let ops = parse(&pipeline)?;
+
+    let outputs = bulk_run_pipeline(&ops, &inputs, verbose)?;
+    save_images(&output_spec, &outputs, verbose)?;
+
+    Ok(())
+}
 
 /// Load inputs, run the pipeline, and save the results.
 pub fn process(
@@ -62,6 +86,36 @@ pub fn process(
     let outputs = run_pipeline(&pipeline, inputs, verbose)?;
     save_images(&output_spec, &outputs, verbose)?;
 
+    Ok(())
+}
+
+/// Run an image processing pipeline on a stack with the given initial contents.
+pub fn bulk_run_pipeline(
+    pipeline: &Vec<Box<dyn SingleImageOp>>,
+    inputs: &Vec<PathBuf>,
+    verbose: bool,
+) -> Result<()> {
+    inputs
+        .iter()
+        .map(|path| {
+            let image = open(&path).context(ImageOpenError { path })?;
+            if verbose {
+                println!(
+                    "Loaded input {:?} (width: {}, height: {})",
+                    path,
+                    image.width(),
+                    image.height()
+                );
+            }
+            for op in pipeline {
+                if verbose {
+                    println!("Applying {:?}", op);
+                }
+                op.apply(&mut stack);
+            }
+            Ok(())
+        })
+        .collect::<Result<Vec<()>>>()?;
     Ok(())
 }
 
@@ -114,6 +168,26 @@ pub fn paths_matching_pattern(pattern: &str) -> Result<Vec<PathBuf>> {
     }
 
     paths
+}
+
+/// Load all images matching the given globs.
+pub fn bulk_load_inputs(input_patterns: &[String], verbose: bool) -> Result<Vec<PathBuf>> {
+    let mut inputs = Vec::new();
+
+    for pattern in input_patterns {
+        let paths = paths_matching_pattern(pattern)?;
+        if verbose {
+            println!(
+                "Found {} path(s) matching input pattern {}: {:?}",
+                paths.len(),
+                pattern,
+                paths,
+            );
+        }
+        inputs.extend(paths);
+    }
+
+    Ok(inputs)
 }
 
 /// Load all images matching the given globs.
