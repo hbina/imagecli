@@ -22,7 +22,7 @@ pub enum ImageCliError {
     #[snafu(display("Unable to save image to '{}': {}", path.display(), source))]
     ImageSaveError {
         path: PathBuf,
-        source: std::io::Error,
+        source: image::ImageError,
     },
 
     /// A generic IO error, with an ad-hoc context.

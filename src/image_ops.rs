@@ -222,6 +222,26 @@ macro_rules! dynamic_map {
             DynamicImage::ImageRgba8(image) => DynamicImage::ImageRgba8($func(image)),
             DynamicImage::ImageBgr8(image) => DynamicImage::ImageBgr8($func(image)),
             DynamicImage::ImageBgra8(image) => DynamicImage::ImageBgra8($func(image)),
+            DynamicImage::ImageLuma16(image) => DynamicImage::ImageLuma16($func(image)),
+            DynamicImage::ImageLumaA16(image) => DynamicImage::ImageLumaA16($func(image)),
+            DynamicImage::ImageRgb16(image) => DynamicImage::ImageRgb16($func(image)),
+            DynamicImage::ImageRgba16(image) => DynamicImage::ImageRgba16($func(image)),
+        }
+    };
+}
+
+macro_rules! dynamic_map_u8 {
+    ($dynimage:expr, $func:expr) => {
+        match $dynimage {
+            DynamicImage::ImageLuma8(image) => DynamicImage::ImageLuma8($func(image)),
+            DynamicImage::ImageLumaA8(image) => DynamicImage::ImageLumaA8($func(image)),
+            DynamicImage::ImageRgb8(image) => DynamicImage::ImageRgb8($func(image)),
+            DynamicImage::ImageRgba8(image) => DynamicImage::ImageRgba8($func(image)),
+            DynamicImage::ImageBgr8(image) => DynamicImage::ImageBgr8($func(image)),
+            DynamicImage::ImageBgra8(image) => DynamicImage::ImageBgra8($func(image)),
+            _ => {
+                unimplemented!("Operation not supported for the given image type")
+            }
         }
     };
 }
@@ -241,6 +261,14 @@ pub enum ColorSpace {
     Bgr8,
     /// 8bpp BGR with an alpha channel.
     Bgra8,
+    /// 16bpp grayscale.
+    Luma16,
+    /// 16bpp grayscale with an alpha channel.
+    LumaA16,
+    /// 16bpp RGB.
+    Rgb16,
+    ///168bpp RGB with an alpha channel.
+    Rgba16,
 }
 
 /// Returns the `ColorSpace` of an image.
@@ -252,6 +280,10 @@ pub fn color_space(image: &DynamicImage) -> ColorSpace {
         DynamicImage::ImageRgba8(_) => ColorSpace::Rgba8,
         DynamicImage::ImageBgr8(_) => ColorSpace::Bgr8,
         DynamicImage::ImageBgra8(_) => ColorSpace::Bgra8,
+        DynamicImage::ImageLuma16(_) => ColorSpace::Luma16,
+        DynamicImage::ImageLumaA16(_) => ColorSpace::LumaA16,
+        DynamicImage::ImageRgb16(_) => ColorSpace::Rgb16,
+        DynamicImage::ImageRgba16(_) => ColorSpace::Rgba16,
     }
 }
 
@@ -264,12 +296,16 @@ pub fn convert_to_color_space(image: DynamicImage, space: ColorSpace) -> Dynamic
     use ColorSpace::*;
     use DynamicImage::*;
     match space {
-        Luma8 => ImageLuma8(image.to_luma()),
-        LumaA8 => ImageLumaA8(image.to_luma_alpha()),
-        Rgb8 => ImageRgb8(image.to_rgb()),
-        Rgba8 => ImageRgba8(image.to_rgba()),
-        Bgr8 => ImageBgr8(image.to_bgr()),
-        Bgra8 => ImageBgra8(image.to_bgra()),
+        Luma8 => ImageLuma8(image.to_luma8()),
+        LumaA8 => ImageLumaA8(image.to_luma_alpha8()),
+        Rgb8 => ImageRgb8(image.to_rgb8()),
+        Rgba8 => ImageRgba8(image.to_rgba8()),
+        Bgr8 => ImageBgr8(image.to_bgr8()),
+        Bgra8 => ImageBgra8(image.to_bgra8()),
+        Luma16 => ImageLuma16(image.to_luma16()),
+        LumaA16 => ImageLumaA16(image.to_luma_alpha16()),
+        Rgb16 => ImageRgb16(image.to_rgb16()),
+        Rgba16 => ImageRgba16(image.to_rgba16()),
     }
 }
 
@@ -311,7 +347,7 @@ struct AdaptiveThreshold(u32);
 
 impl ImageOp for AdaptiveThreshold {
     fn apply(&self, stack: &mut ImageStack) {
-        let gray = stack.pop().to_luma();
+        let gray = stack.pop().to_luma8();
         stack.push(ImageLuma8(imageproc::contrast::adaptive_threshold(
             &gray, self.0,
         )));
@@ -391,7 +427,7 @@ struct Blue;
 
 impl ImageOp for Blue {
     fn apply(&self, stack: &mut ImageStack) {
-        let rgb = stack.pop().to_rgb();
+        let rgb = stack.pop().to_rgb8();
         stack.push(ImageLuma8(imageproc::map::blue_channel(&rgb)));
     }
 
@@ -422,7 +458,7 @@ impl ImageOp for Carve {
         assert!(self.0 <= 1.0);
         let image = stack.pop();
         let target_width = (image.width() as f32 * self.0) as u32;
-        stack.push(dynamic_map!(&image, |i| shrink_width(i, target_width)));
+        stack.push(dynamic_map_u8!(&image, |i| shrink_width(i, target_width)));
     }
 
     fn signature(&self) -> Option<(usize, usize)> {
@@ -484,7 +520,7 @@ impl ImageOp for Circle {
 fn draw_circle(image: DynamicImage, circle: &Circle) -> DynamicImage {
     use imageproc::drawing::{draw_filled_circle_mut, draw_hollow_circle_mut};
     // TODO: Handle formats properly - choose the "most general" color space.
-    let mut image = image.to_rgba();
+    let mut image = image.to_rgba8();
     let color = match circle.color {
         Color::Luma(c) => c.to_rgba(),
         Color::LumaA(c) => c.to_rgba(),
@@ -669,7 +705,7 @@ impl ImageOp for Func {
             let r = self.expr.evaluate(x as f32, y as f32, p as f32, 0.0, 0.0);
             <u8 as Clamp<f32>>::clamp(r)
         };
-        stack.push(dynamic_map!(&image, |i| map_subpixels_with_coords(i, f)));
+        stack.push(dynamic_map_u8!(&image, |i| map_subpixels_with_coords(i, f)));
     }
 
     fn signature(&self) -> Option<(usize, usize)> {
@@ -733,8 +769,8 @@ fn func2(image1: &DynamicImage, image2: &DynamicImage, expr: &Expr) -> DynamicIm
     // TODO: don't do unnecessary conversions everywhere. Rather than constantly converting
     // TODO: between formats or adding elaborate format checking, maybe we should just do all
     // TODO: calculations at RGBA.
-    let image1 = image1.to_rgba();
-    let image2 = image2.to_rgba();
+    let image1 = image1.to_rgba8();
+    let image2 = image2.to_rgba8();
     ImageRgba8(map_subpixels_with_coords2(&image1, &image2, f))
 }
 
@@ -805,9 +841,9 @@ fn func3(
     // TODO: don't do unnecessary conversions everywhere. Rather than constantly converting
     // TODO: between formats or adding elaborate format checking, maybe we should just do all
     // TODO: calculations at RGBA.
-    let image1 = image1.to_rgba();
-    let image2 = image2.to_rgba();
-    let image3 = image3.to_rgba();
+    let image1 = image1.to_rgba8();
+    let image2 = image2.to_rgba8();
+    let image3 = image3.to_rgba8();
     ImageRgba8(map_subpixels_with_coords3(&image1, &image2, &image3, f))
 }
 
@@ -890,7 +926,7 @@ struct Green;
 
 impl ImageOp for Green {
     fn apply(&self, stack: &mut ImageStack) {
-        let rgb = stack.pop().to_rgb();
+        let rgb = stack.pop().to_rgb8();
         stack.push(ImageLuma8(imageproc::map::green_channel(&rgb)));
     }
 
@@ -932,7 +968,7 @@ fn grid(images: &[DynamicImage], cols: u32, rows: u32) -> DynamicImage {
     assert!(images.len() >= cols * rows);
     let images = &images[..cols * rows];
     // TODO: handle formats properly
-    let images: Vec<_> = images.iter().map(|i| i.to_rgba()).collect();
+    let images: Vec<_> = images.iter().map(|i| i.to_rgba8()).collect();
 
     // Find the widest image in each column and the tallest image in each row
     let mut widths = Vec::with_capacity(cols);
@@ -970,7 +1006,9 @@ fn grid(images: &[DynamicImage], cols: u32, rows: u32) -> DynamicImage {
     for r in 0..rows {
         for c in 0..cols {
             let image = &images[r * cols + c];
-            out.copy_from(image, lefts[c], tops[r]);
+            out.copy_from(image, lefts[c], tops[r]).expect(
+                "This should never happen because we calculted the size of the image `out`",
+            );
         }
     }
 
@@ -1142,9 +1180,9 @@ struct Median(u32, u32);
 impl ImageOp for Median {
     fn apply(&self, stack: &mut ImageStack) {
         let image = stack.pop();
-        stack.push(dynamic_map!(&image, |i| imageproc::filter::median_filter(
-            i, self.0, self.1
-        )));
+        stack.push(dynamic_map_u8!(&image, |i| {
+            imageproc::filter::median_filter(i, self.0, self.1)
+        }));
     }
 
     fn signature(&self) -> Option<(usize, usize)> {
@@ -1419,7 +1457,7 @@ struct Red;
 
 impl ImageOp for Red {
     fn apply(&self, stack: &mut ImageStack) {
-        let rgb = stack.pop().to_rgb();
+        let rgb = stack.pop().to_rgb8();
         stack.push(ImageLuma8(imageproc::map::red_channel(&rgb)));
     }
 
@@ -1620,6 +1658,30 @@ fn rotate(image: &DynamicImage, theta: f32) -> DynamicImage {
             Interpolation::Bilinear,
             Bgra([0, 0, 0, 0]),
         )),
+        ImageLuma16(image) => ImageLuma16(rotate_about_center(
+            image,
+            rad,
+            Interpolation::Bilinear,
+            Luma([0]),
+        )),
+        ImageLumaA16(image) => ImageLumaA16(rotate_about_center(
+            image,
+            rad,
+            Interpolation::Bilinear,
+            LumaA([0, 0]),
+        )),
+        ImageRgb16(image) => ImageRgb16(rotate_about_center(
+            image,
+            rad,
+            Interpolation::Bilinear,
+            Rgb([0, 0, 0]),
+        )),
+        ImageRgba16(image) => ImageRgba16(rotate_about_center(
+            image,
+            rad,
+            Interpolation::Bilinear,
+            Rgba([0, 0, 0, 0]),
+        )),
     }
 }
 
@@ -1746,6 +1808,10 @@ fn sobel(image: &DynamicImage) -> DynamicImage {
         ImageBgra8(image) => ImageLuma8(sobel_gradient_map(image, |p| {
             Luma([clamp_to_u8(cmp::max(cmp::max(p[0], p[1]), p[2]))])
         })),
+        ImageLuma16(_) => todo!(),
+        ImageLumaA16(_) => todo!(),
+        ImageRgb16(_) => todo!(),
+        ImageRgba16(_) => todo!(),
     }
 }
 
