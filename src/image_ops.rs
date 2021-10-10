@@ -1808,10 +1808,7 @@ fn sobel(image: &DynamicImage) -> DynamicImage {
         ImageBgra8(image) => ImageLuma8(sobel_gradient_map(image, |p| {
             Luma([clamp_to_u8(cmp::max(cmp::max(p[0], p[1]), p[2]))])
         })),
-        ImageLuma16(_) => todo!(),
-        ImageLumaA16(_) => todo!(),
-        ImageRgb16(_) => todo!(),
-        ImageRgba16(_) => todo!(),
+        _ => unimplemented!("Not implemented for the given image type yet"),
     }
 }
 
